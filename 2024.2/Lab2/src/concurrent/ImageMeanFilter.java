@@ -1,6 +1,9 @@
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
 import javax.imageio.ImageIO;
 
 /**
@@ -29,7 +32,7 @@ public class ImageMeanFilter {
      * @param kernelSize Size of mean kernel
      * @throws IOException If there is an error reading/writing
      */
-    public static void applyMeanFilter(String inputPath, String outputPath, int kernelSize) throws IOException {
+    public static void applyMeanFilter(String inputPath, String outputPath, int kernelSize, int threadCount) throws IOException {
         // Load image
         BufferedImage originalImage = ImageIO.read(new File(inputPath));
         
@@ -41,27 +44,69 @@ public class ImageMeanFilter {
         );
         
         // Image processing
-        int width = originalImage.getWidth();
+        // int width = originalImage.getWidth();
         int height = originalImage.getHeight();
+        int blockSize = height/ threadCount;
+        List<E> <Thread> threads = new ArrayList<>();
+        
         // Process each pixel
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                // Calculate neighborhood average
-                int[] avgColor = calculateNeighborhoodAverage(originalImage, x, y, kernelSize);
-                
-                // Set filtered pixel
-                filteredImage.setRGB(x, y, 
-                    (avgColor[0] << 16) | 
-                    (avgColor[1] << 8)  | 
-                    avgColor[2]
-                );
+        for (int i = 0; i < threadCount; i++) {
+            int starty = i * blockSize;
+            int endy = (i == threadCount - 1) ? height : starty + blockSize;
+            
+            Thread thread = new Thread(new MeanFilterTask(originalImage, filteredImage, kernelSize, starty, endy));
+            threads.add(thread);
+            thread.start();
+        }
+        for (Thread thread : threads) {
+            try{
+                thread.join();
+            
+            } catch(InterruptedException e){
+                e.printStackTrace();
             }
+            
+    
         }
         
         // Save filtered image
         ImageIO.write(filteredImage, "jpg", new File(outputPath));
     }
+
     
+
+    private static class MeanFilterTask implements Runnable{
+        private final BufferedImage originImage;
+        private final BufferedImage filteredImage;
+        private final int kernelSize;
+        private final int size;
+        private final int endy;
+        public MeanFilterTask(BufferedImage originImage, BufferedImage filteredImage, int kernelSize, int size, int endy) {
+            this.originImage = originImage;
+            this.filteredImage = filteredImage;
+            this.kernelSize = kernelSize;
+            this.size = size;
+            this.endy = endy;
+        }
+
+        public void run(){
+            int width = originImage.getWidth();
+            for (int y = startY; y < endy; y++) {
+                for (int x = 0; x < width; x++) {
+                    // Calculate neighborhood average
+                    int[] avgColor = calculateNeighborhoodAverage(originalImage, x, y, kernelSize);
+                    // Set filtered pixel
+                    filteredImage.setRGB(x, y, 
+                        (avgColor[0] << 16) | 
+                        (avgColor[1] << 8)  | 
+                        avgColor[2]
+                    );
+                }
+            }
+        }
+    }
+
+
     /**
      * Calculates average colors in a pixel's neighborhood
      * 
@@ -71,6 +116,7 @@ public class ImageMeanFilter {
      * @param kernelSize Kernel size
      * @return Array with R, G, B averages
      */
+
     private static int[] calculateNeighborhoodAverage(BufferedImage image, int centerX, int centerY, int kernelSize) {
         int width = image.getWidth();
         int height = image.getHeight();
@@ -135,8 +181,9 @@ public class ImageMeanFilter {
         }
 
         String inputFile = args[0];
+        int threadCount = Integer.parseInt(args[1]);
         try {
-            applyMeanFilter(inputFile, "filtered_output.jpg", 7);
+            applyMeanFilter(inputFile, "filtered_output.jpg", 7, threadCount);
         } catch (IOException e) {
             System.err.println("Error processing image: " + e.getMessage());
         }
